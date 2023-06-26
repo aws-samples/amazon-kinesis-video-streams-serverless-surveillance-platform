@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Building S3 Buckets to save lambda functional code
+
+Resources:
+  SurveillanceCameraLambdaLoggingBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub 'surveillance-camera-logging-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+
+
+  SurveillanceCameraLambdaBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub 'surveillance-camera-lambda-functions-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+      LoggingConfiguration:
+        DestinationBucketName: !Ref SurveillanceCameraLambdaLoggingBucket
+        LogFilePrefix: s3-lambda-logs
+
+  SurveillanceCameraLambdaLoggingBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref SurveillanceCameraLambdaLoggingBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 's3:PutObject'
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref SurveillanceCameraLambdaLoggingBucket
+                - /*
+            Condition:
+              ArnLike:
+                'aws:SourceArn': !GetAtt
+                  - SurveillanceCameraLambdaBucket
+                  - Arn
+              StringEquals:
+                'aws:SourceAccount': !Sub '${AWS::AccountId}'

@@ -1,0 +1,12 @@
+.DS_Store
+.idea
+*.zip
+node_modules/
+package-lock.json
+test.sh
+__pycache__/
+certificates/
+claim-certificates/
+yarn.lock
+reports/
+Ticket

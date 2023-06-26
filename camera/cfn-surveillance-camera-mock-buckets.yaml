@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Building S3 Buckets to save connection kit for camera mock
+
+Resources:
+  SurveillanceCameraCKLoggingBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub 'surveillance-camera-mock-logging-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+
+
+  SurveillanceCameraCKBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub 'surveillance-camera-connection-kit-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+      LoggingConfiguration:
+        DestinationBucketName: !Ref SurveillanceCameraCKLoggingBucket
+        LogFilePrefix: s3-lambda-logs
+
+  SurveillanceCameraLambdaLoggingBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref SurveillanceCameraCKLoggingBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 's3:PutObject'
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref SurveillanceCameraCKLoggingBucket
+                - /*
+            Condition:
+              ArnLike:
+                'aws:SourceArn': !GetAtt
+                  - SurveillanceCameraCKBucket
+                  - Arn
+              StringEquals:
+                'aws:SourceAccount': !Sub '${AWS::AccountId}'
