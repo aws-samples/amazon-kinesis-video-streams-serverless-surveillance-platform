@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creating a mock IoT Surveillance Camera Device
+Parameters:
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id'
+  CredentialsIotEndpoint:
+    Type: String
+    Description: IoT Credentials Endpoint
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.8.3.0/26
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: CameraMockDeviceVPC
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.8.3.0/28
+      MapPublicIpOnLaunch: false
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGateway
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTable
+  SubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetA
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "No Traffic in allowed for this mock."
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description : "Traffic to any IP for WebRTC allowed"
+  RootInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref CameraMockS3ReadRole
+  CameraMockS3ReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+  IoTMockDevice:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: t3.small
+      IamInstanceProfile: !Ref RootInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: InstanceSecurityGroup
+          SubnetId:
+            Ref: SubnetA
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 16
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: camera-device-mock
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          export AWS_IOT_CORE_CREDENTIAL_ENDPOINT=${CredentialsIotEndpoint}
+          export AWS_IOT_CORE_CERT=/iot/certificates/certificate.cert.pem
+          export AWS_IOT_CORE_PRIVATE_KEY=/iot/certificates/private.pem.key
+          export AWS_IOT_CORE_ROLE_ALIAS=KvsCameraIoTRoleAlias
+          export AWS_DEFAULT_REGION=${AWS::Region}
+            
+          apt-get update -y
+          apt-get install -y git python3-pip awscli unzip build-essential pkg-config cmake libcap2 libcap-dev libssl-dev libcurl4-openssl-dev liblog4cplus-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-tools
+            
+          git clone --recursive https://github.com/awslabs/amazon-kinesis-video-streams-webrtc-sdk-c.git
+          mkdir -p amazon-kinesis-video-streams-webrtc-sdk-c/build
+          cd amazon-kinesis-video-streams-webrtc-sdk-c/samples
+          sed -i '1s/^/#define IOT_CORE_ENABLE_CREDENTIALS true\n/' Common.c
+          cd ../build
+          cmake ..
+          make
+            
+          cd /
+          mkdir -p iot/certificates
+          cd iot
+          aws s3 cp s3://surveillance-camera-connection-kit-${AWS::AccountId}-${AWS::Region} . --recursive
+          unzip mockDevice.zip
+          rm mockDevice.zip
+          cd scripts
+          pip3 install -r requirements.txt
+          python3 main.py
+          
+          cd /
+          cp ./iot/service/videostream.service /etc/systemd/system/videostream.service
+          systemctl enable videostream.service
+          systemctl start videostream.service

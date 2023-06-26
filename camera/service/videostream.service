@@ -1,0 +1,11 @@
+[Unit]
+Description=AWS IoT KVS WebRTC Streaming Client
+
+[Service]
+ExecStart=/usr/bin/bash /iot/service/stream-video.sh
+WorkingDirectory=/
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

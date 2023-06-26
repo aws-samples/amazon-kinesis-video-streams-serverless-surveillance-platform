@@ -1,0 +1,921 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Building AWS Lambda functions, Amazon Dynamo DB, Amazon API Gateway, IoT Core Provisioning Template and Amazon Cognito resources
+Metadata:
+  KVSCameraCertificateBasedIAMRole:
+    Description: "This IAM entity contains wildcard permissions, but is scoped and isolated by the thing name as stream name https://docs.aws.amazon.com/kinesisvideostreams/latest/dg/how-iot.html#how-iot-thingnamestreamname"
+  KVSPermissionHandler:
+    Description: "This IAM entity contains wildcard permissions, but is scoped and isolated with dynamically generated iam permissions via lambda https://aws.amazon.com/blogs/apn/isolating-saas-tenants-with-dynamically-generated-iam-policies/"
+  LambdaCommunicationHandler:
+    Description: "This IAM entity contains wildcard permissions and is used solely to execute the read action DescribeThing via lambda to forward attributes to the client of the camera owner"
+Parameters:
+  CallbackUrl:
+    Type: String
+    Description: Callback Url for Cognito Hosted UI
+
+Resources:
+  CameraClaimPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: iot:Connect
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - iot:Publish
+              - iot:Receive
+              - iot:RetainPublish
+            Resource:
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:iot:'
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - ":topic/$aws/certificates/create/*"
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:iot:'
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - ":topic/$aws/provisioning-templates/CameraProvisioningTemplate/provision/*"
+          - Effect: Allow
+            Action: iot:Subscribe
+            Resource:
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:iot:'
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - ":topicfilter/$aws/certificates/create/*"
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:iot:'
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - ":topicfilter/$aws/provisioning-templates/CameraProvisioningTemplate/provision/*"
+      PolicyName: CameraClaimPolicy
+
+  KVSCameraCertificateBasedIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: credentials.iot.amazonaws.com
+            Action: sts:AssumeRole
+      Description: String
+      Policies:
+        - PolicyName: KVSCameraIAMPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesisvideo:GetDataEndpoint
+                  - kinesisvideo:DescribeSignalingChannel
+                  - kinesisvideo:CreateSignalingChannel
+                  - kinesisvideo:GetSignalingChannelEndpoint
+                  - kinesisvideo:GetIceServerConfig
+                  - kinesisvideo:ConnectAsMaster
+                Resource:
+                  - Fn::Join:
+                      - ''
+                      - - 'arn:aws:kinesisvideo:'
+                        - Ref: AWS::Region
+                        - ":"
+                        - Ref: AWS::AccountId
+                        - ":channel/${credentials-iot:ThingName}/*"
+      RoleName: KVSCameraCertificateBasedIAMRole
+
+  LambdaDynamoDBHandler:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBItemAction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetRecords
+                Resource:
+                  - !GetAtt DeviceMappingTable.Arn
+                  - !GetAtt DeviceRepositoryTable.Arn
+      RoleName: LambdaDynamoDBHandler
+
+  LambdaDeviceBindingHandler:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Description: String
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBItemAction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetRecords
+                Resource:
+                  - !GetAtt DeviceMappingTable.Arn
+                  - !GetAtt DeviceRepositoryTable.Arn
+      RoleName: LambdaDeviceBindingHandler
+
+  LambdaKinesisVideoStreamHandler:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Description: String
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBItemAction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetRecords
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Device_Repository"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Device_Mapping"
+        - PolicyName: AssumeKVSRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/KVSPermissionHandler"
+      RoleName: LambdaKinesisVideoStreamHandler
+
+  KVSPermissionHandler:
+    Type: AWS::IAM::Role
+    DependsOn: [ 'LambdaKinesisVideoStreamHandler', 'KinesisVideoStreamPermissionHandler' ]
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:sts::${AWS::AccountId}:assumed-role/LambdaKinesisVideoStreamHandler/KinesisVideoStreamPermissionHandler"
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: KVSViewerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesisvideo:ConnectAsViewer
+                  - kinesisvideo:DescribeSignalingChannel
+                  - kinesisvideo:GetSignalingChannelEndpoint
+                  - kinesisvideo:GetIceServerConfig
+                Resource:
+                  - !Sub 'arn:aws:kinesisvideo:${AWS::Region}:${AWS::AccountId}:channel/*/*'
+      RoleName: KVSPermissionHandler
+
+  LambdaCommunicationHandler:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Description: String
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBItemAction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetRecords
+                Resource:
+                  - !GetAtt DeviceMappingTable.Arn
+                  - !GetAtt DeviceRepositoryTable.Arn
+        - PolicyName: IoTThingCommand
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iot:DescribeThing
+                Resource:
+                  - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:thing/*'
+      RoleName: LambdaCommunicationHandler
+
+  KvsCameraIoTPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: iot:AssumeRoleWithCertificate
+            Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rolealias/KvsCameraIoTRoleAlias"
+          - Effect: Allow
+            Action: iot:Connect
+            Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rolealias/KvsCameraIoTRoleAlias"
+      PolicyName: KvsCameraIoTPolicy
+
+  KvsCameraIoTRoleAlias:
+    Type: AWS::IoT::RoleAlias
+    Properties:
+      RoleAlias: KvsCameraIoTRoleAlias
+      RoleArn: !GetAtt KVSCameraCertificateBasedIAMRole.Arn
+
+  CameraProvisioningTemplateRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Description: 'This policy allows users to register things at bulk using AWS IoT StartThingRegistrationTask API'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSIoTThingsRegistration
+      RoleName: CameraProvisioningTemplateRole
+
+  DeviceRepositoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Device_Repository
+      SSESpecification:
+        KMSMasterKeyId: alias/aws/dynamodb
+        SSEEnabled: true
+        SSEType: KMS
+      AttributeDefinitions:
+        - AttributeName: "device_sn"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "device_sn"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+
+  DeviceMappingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Device_Mapping
+      SSESpecification:
+        KMSMasterKeyId: alias/aws/dynamodb
+        SSEEnabled: true
+        SSEType: KMS
+      AttributeDefinitions:
+        - AttributeName: "email"
+          AttributeType: "S"
+        - AttributeName: "device_sn"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "email"
+          KeyType: "HASH"
+        - AttributeName: "device_sn"
+          KeyType: "RANGE"
+      BillingMode: "PAY_PER_REQUEST"
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+      MfaConfiguration: "ON"
+      AliasAttributes:
+        - email
+      UserPoolName: SurveillanceCamera
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - "code"
+        - "implicit"
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - "email"
+        - "openid"
+      CallbackURLs:
+        - !Ref CallbackUrl
+      ClientName: "SurveillanceCameraWebApp"
+      EnableTokenRevocation: true
+      ExplicitAuthFlows:
+        - "ALLOW_CUSTOM_AUTH"
+        - "ALLOW_REFRESH_TOKEN_AUTH"
+        - "ALLOW_USER_SRP_AUTH"
+      PreventUserExistenceErrors: "ENABLED"
+      SupportedIdentityProviders:
+        - "COGNITO"
+      UserPoolId: !Ref CognitoUserPool
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub "surveillance-camera-example-${AWS::AccountId}"
+      UserPoolId: !Ref CognitoUserPool
+
+  LambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - nodejs16.x
+        - nodejs18.x
+      Content:
+        S3Bucket: !Sub 'surveillance-camera-lambda-functions-${AWS::AccountId}-${AWS::Region}'
+        S3Key: Layer/nodejs.zip
+      Description: node_modules for Lambdas
+      LayerName: NodeJSModules
+
+  CreateUserDeviceBinding:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: "CreateUserDeviceBinding"
+      Handler: index.handler
+      Runtime: nodejs18.x
+      ReservedConcurrentExecutions: 20
+      Layers:
+        - !Ref LambdaLayer
+      Code:
+        S3Bucket: !Sub 'surveillance-camera-lambda-functions-${AWS::AccountId}-${AWS::Region}'
+        S3Key: CreateUserDeviceBinding/nodejs.zip
+      Description: Register a new device with a username
+      MemorySize: 128
+      Timeout: 3
+      Role: !GetAtt LambdaDeviceBindingHandler.Arn
+      Environment:
+        Variables:
+          CLIENTID: !Ref CognitoUserPoolClient
+          DEVICETABLENAME: Device_Repository
+          POOLID: !Ref CognitoUserPool
+          MAPPINGTABLENAME: Device_Mapping
+
+  DeviceBindingPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CreateUserDeviceBinding.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SurveillanceCameraAPI}/*/POST/device/add'
+
+  CheckDeviceManufactured:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: "CheckDeviceManufactured"
+      Handler: index.handler
+      Runtime: nodejs18.x
+      ReservedConcurrentExecutions: 20
+      Layers:
+        - !Ref LambdaLayer
+      Code:
+        S3Bucket: !Sub 'surveillance-camera-lambda-functions-${AWS::AccountId}-${AWS::Region}'
+        S3Key: CheckDeviceManufactured/nodejs.zip
+      Description: Check in manufacturer database if device is there
+      MemorySize: 128
+      Timeout: 3
+      Role: !GetAtt LambdaDynamoDBHandler.Arn
+      Environment:
+        Variables:
+          DEVICETABLENAME: Device_Repository
+
+  ProvisioningPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CheckDeviceManufactured.Arn
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn:
+        Fn::Join:
+          - ''
+          - - 'arn:aws:iot:'
+            - Ref: AWS::Region
+            - ":"
+            - Ref: AWS::AccountId
+            - ":provisioningtemplate/CameraProvisioningTemplate"
+
+  GetDevice:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: "GetDevice"
+      Handler: index.handler
+      Runtime: nodejs18.x
+      ReservedConcurrentExecutions: 20
+      Layers:
+        - !Ref LambdaLayer
+      Code:
+        S3Bucket: !Sub 'surveillance-camera-lambda-functions-${AWS::AccountId}-${AWS::Region}'
+        S3Key: GetDevice/nodejs.zip
+      Description: Get device information from database
+      MemorySize: 128
+      Timeout: 3
+      Role: !GetAtt LambdaCommunicationHandler.Arn
+      Environment:
+        Variables:
+          CLIENTID: !Ref CognitoUserPoolClient
+          POOLID: !Ref CognitoUserPool
+          MAPPINGTABLENAME: Device_Mapping
+
+  GetDevicePermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt GetDevice.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SurveillanceCameraAPI}/*/GET/device'
+
+  KinesisVideoStreamPermissionHandler:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: "KinesisVideoStreamPermissionHandler"
+      Handler: index.handler
+      Runtime: nodejs18.x
+      ReservedConcurrentExecutions: 20
+      Layers:
+        - !Ref LambdaLayer
+      Code:
+        S3Bucket: !Sub 'surveillance-camera-lambda-functions-${AWS::AccountId}-${AWS::Region}'
+        S3Key: KinesisVideoStreamPermissionHandler/nodejs.zip
+      Description: Provide secrets to user to connect to WebRTC Channel
+      MemorySize: 128
+      Timeout: 3
+      Role: !GetAtt LambdaKinesisVideoStreamHandler.Arn
+      Environment:
+        Variables:
+          CLIENTID: !Ref CognitoUserPoolClient
+          POOLID: !Ref CognitoUserPool
+          MAPPINGTABLENAME: Device_Mapping
+
+
+  KinesisVideoStreamHandlerPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt KinesisVideoStreamPermissionHandler.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SurveillanceCameraAPI}/*/GET/device/endpoint'
+
+  CameraProvisioningTemplate:
+    Type: 'AWS::IoT::ProvisioningTemplate'
+    DependsOn: [ 'ProvisioningPermissions','CheckDeviceManufactured' ]
+    Properties:
+      Description: 'Provisioning Template to onboard of surveillance cameras'
+      Enabled: true
+      PreProvisioningHook:
+        PayloadVersion: '2020-04-01'
+        TargetArn: !GetAtt CheckDeviceManufactured.Arn
+      ProvisioningRoleArn: !GetAtt CameraProvisioningTemplateRole.Arn
+      TemplateBody: |
+        {
+          "Parameters": {
+            "SerialNumber": {
+              "Type": "String"
+            },
+            "Country": {
+              "Type": "String"
+            },
+            "Version": {
+              "Type": "String"
+            },
+            "AWS::IoT::Certificate::Id": {
+              "Type": "String"
+            }
+          },
+          "Resources": {
+            "certificate": {
+              "Properties": {
+                "CertificateId": {
+                  "Ref": "AWS::IoT::Certificate::Id"
+                },
+                "Status": "Active"
+              },
+              "Type": "AWS::IoT::Certificate"
+            },
+            "policyKVS": {
+              "Properties": {
+                "PolicyName": "KvsCameraIoTPolicy"
+              },
+              "Type": "AWS::IoT::Policy"
+            },
+            "thing": {
+              "OverrideSettings": {
+                "AttributePayload": "MERGE",
+                "ThingGroups": "DO_NOTHING",
+                "ThingTypeName": "REPLACE"
+              },
+              "Properties": {
+                "AttributePayload": {
+                  "version": {
+                    "Ref": "Version"
+                  },
+                  "serial_number": {
+                    "Ref": "SerialNumber"
+                  },
+                  "country": {
+                    "Ref": "Country"
+                  }
+                },
+                "ThingGroups": [
+                  "V1"
+                ],
+                "ThingName": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "",
+                      {
+                        "Ref": "SerialNumber"
+                      }
+                    ]
+                  ]
+                },
+                "ThingTypeName": "Camera"
+              },
+              "Type": "AWS::IoT::Thing"
+            }
+          }
+        }
+      TemplateName: 'CameraProvisioningTemplate'
+      TemplateType: 'FLEET_PROVISIONING'
+
+  SurveillanceCameraAPI:
+    Type: 'AWS::ApiGateway::RestApi'
+    DependsOn: [ 'KinesisVideoStreamPermissionHandler', 'GetDevice', 'CreateUserDeviceBinding', 'CognitoUserPool', 'CognitoUserPoolClient' ]
+    Properties:
+      Body:
+        openapi: "3.0.1"
+        info:
+          title: "Surveillance Camera API"
+          version: "2022-08-10T12:36:52Z"
+        x-amazon-apigateway-request-validator: "params-only"
+        paths:
+          /device:
+            get:
+              parameters:
+                - name: "id_token"
+                  in: "header"
+                  required: true
+                  schema:
+                    type: "string"
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: "string"
+                  content: { }
+              security:
+                - Cognito: [ ]
+              x-amazon-apigateway-request-validator: "params-only"
+              x-amazon-apigateway-integration:
+                uri: !Sub  "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetDevice.Arn}/invocations"
+                httpMethod: "POST"
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\n  \"method\": \"$context.httpMethod\",\n  \"body\"\
+                    \ : $input.json('$'),\n  \"headers\": {\n    #foreach($param in $input.params().header.keySet())\n\
+                    \    \"$param\": \"$util.escapeJavaScript($input.params().header.get($param))\"\
+                    \ #if($foreach.hasNext),#end\n\n    #end\n  } \n}"
+                passthroughBehavior: "when_no_templates"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws"
+            options:
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Methods:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Headers:
+                      schema:
+                        type: "string"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Empty"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,id_token,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                passthroughBehavior: "when_no_match"
+                type: "mock"
+          /device/add:
+            post:
+              parameters:
+                - name: "id_token"
+                  in: "header"
+                  required: true
+                  schema:
+                    type: "string"
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      $ref: "#/components/schemas/UserInput"
+                required: true
+              responses:
+                "401":
+                  description: "401 response"
+                  content: { }
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: "string"
+                  content: { }
+              security:
+                - Cognito: [ ]
+              x-amazon-apigateway-request-validator: "Validate body"
+              x-amazon-apigateway-integration:
+                uri: !Sub  "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateUserDeviceBinding.Arn}/invocations"
+                httpMethod: "POST"
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\n  \"method\": \"$context.httpMethod\",\n  \"body\"\
+                    \ : $input.json('$'),\n  \"headers\": {\n    #foreach($param in $input.params().header.keySet())\n\
+                    \    \"$param\": \"$util.escapeJavaScript($input.params().header.get($param))\"\
+                    \ #if($foreach.hasNext),#end\n\n    #end\n  } \n}"
+                passthroughBehavior: "when_no_templates"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws"
+            options:
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Methods:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Headers:
+                      schema:
+                        type: "string"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Empty"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,id_token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                passthroughBehavior: "when_no_match"
+                type: "mock"
+          /device/endpoint:
+            get:
+              parameters:
+                - name: "id_token"
+                  in: "header"
+                  required: true
+                  schema:
+                    type: "string"
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: "string"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Empty"
+              security:
+                - Cognito: [ ]
+              x-amazon-apigateway-request-validator: "params-only"
+              x-amazon-apigateway-integration:
+                uri: !Sub  "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${KinesisVideoStreamPermissionHandler.Arn}/invocations"
+                httpMethod: "POST"
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\n  \"method\": \"$context.httpMethod\",\n  \"body\"\
+                    \ : $input.json('$'),\n  \"headers\": {\n    #foreach($param in $input.params().header.keySet())\n\
+                    \    \"$param\": \"$util.escapeJavaScript($input.params().header.get($param))\"\
+                    \ #if($foreach.hasNext),#end\n\n    #end\n  } \n}"
+                passthroughBehavior: "when_no_templates"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws"
+            options:
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Methods:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Headers:
+                      schema:
+                        type: "string"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Empty"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,id_token,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                passthroughBehavior: "when_no_match"
+                type: "mock"
+        components:
+          schemas:
+            Empty:
+              title: "Empty Schema"
+              type: "object"
+            UserInput:
+              title: "DeviceBinding"
+              required:
+                - "device_sn"
+                - "secret"
+              type: "object"
+              properties:
+                device_sn:
+                  pattern: "^[a-zA-Z\\d-]+$"
+                  type: "string"
+                secret:
+                  pattern: "^\\d+$"
+                  type: "string"
+          securitySchemes:
+            Cognito:
+              type: "apiKey"
+              name: "id_token"
+              in: "header"
+              x-amazon-apigateway-authtype: "cognito_user_pools"
+              x-amazon-apigateway-authorizer:
+                providerARNs:
+                  - !GetAtt CognitoUserPool.Arn
+                type: "cognito_user_pools"
+        x-amazon-apigateway-gateway-responses:
+          DEFAULT_4XX:
+            responseParameters:
+              gatewayresponse.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+              gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+              gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,id_token'"
+        x-amazon-apigateway-request-validators:
+          Validate body:
+            validateRequestParameters: false
+            validateRequestBody: true
+      Description: 'Surveillance Camera API'
+      Mode: 'overwrite'
+      Name: 'Surveillance Camera API'
+      Parameters:
+        endpointConfigurationTypes: REGIONAL
+
+  RequestValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      Name: params-only
+      RestApiId: !Ref SurveillanceCameraAPI
+      ValidateRequestBody: true
+      ValidateRequestParameters: true
+
+  APIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref SurveillanceCameraAPI
+      Description: "Deployment of the SurveillanceCameraAPI"
+      StageName: V1
+      StageDescription:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+        AccessLogSetting:
+          DestinationArn: !GetAtt APILogGroup.Arn
+          Format: |
+            { "requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user","requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength" }
+
+  APILogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: SurveillanceCameraAPIGateway
+      RetentionInDays: 7
+
+  APIAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt APICloudwatchLogRole.Arn
+
+  APICloudwatchLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+Outputs:
+  CognitoUserPool:
+    Value: !Ref CognitoUserPool
+  CognitoUserPoolClient:
+    Value: !Ref CognitoUserPoolClient
+  SurveillanceCameraAPI:
+    Value: !Ref SurveillanceCameraAPI
