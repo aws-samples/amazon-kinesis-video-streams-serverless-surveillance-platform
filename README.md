@@ -1,4 +1,4 @@
-# Severless Surveillance Camera Platform
+# Serverless Surveillance Camera Platform
 
 
 Deploying the infrastructure requires you to have sufficient privileges to do so.
