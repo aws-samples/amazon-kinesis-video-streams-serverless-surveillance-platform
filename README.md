@@ -1,4 +1,5 @@
-# Serverless Surveillance Camera Platform
+# Amazon Kinesis Video Streams serverless surveillance platform
+
 
 You can find the related blogpost to this repository here: 
 [Design considerations for cost-effective video surveillance platforms with AWS IoT for Smart Homes](https://aws.amazon.com/blogs/iot/design-considerations-for-cost-effective-video-surveillance-platforms-with-aws-iot-for-smart-homes/)
