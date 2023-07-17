@@ -1,5 +1,7 @@
 # Serverless Surveillance Camera Platform
 
+You can find the related blogpost to this repository here: 
+[Design considerations for cost-effective video surveillance platforms with AWS IoT for Smart Homes](https://aws.amazon.com/blogs/iot/design-considerations-for-cost-effective-video-surveillance-platforms-with-aws-iot-for-smart-homes/)
 
 Deploying the infrastructure requires you to have sufficient privileges to do so.
 Please [setup the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) beforehand.
@@ -24,10 +26,10 @@ You can find a detailed explanation to every building block in the [Solution Wal
 
 
 1. [What the installation scripts do](#what-the-installation-scripts-do)
-2. [Quick Start](#quick-start)
-3. [How to clean up](#how-to-clean-up)
-4. [Web Client Walkthrough](#web-client-walkthrough)
-5. [Solution Walkthrough](#solution-walkthrough)
+3. [Quick Start](#quick-start)
+4. [How to clean up](#how-to-clean-up)
+5. [Web Client Walkthrough](#web-client-walkthrough)
+6. [Solution Walkthrough](#solution-walkthrough)
 
 ---
 
@@ -153,52 +155,9 @@ The `Login.tsx` component handles the redirecting to the Amazon Cognito hosted U
 
 ## Quick start
 
-### Deploying on Cloud9
+Please follow the instructions in the walktrough section of the corresponding blogpost on how to get started:
+[Design considerations for cost-effective video surveillance platforms with AWS IoT for Smart Homes](https://aws.amazon.com/blogs/iot/design-considerations-for-cost-effective-video-surveillance-platforms-with-aws-iot-for-smart-homes/)
 
-1. [Open Cloud9 in the AWS Management Console](https://console.aws.amazon.com/cloud9)
-2.	Click on **Create environment**
-3.	Name your environment **surveillance-camera-ide**
-4.	Click on **Create** and wait until the environment is created
-5.	Choose **surveillance-camera-ide** and **Open in Cloud9**
-6.	Open a terminal in Cloud9
-7.	Clone the surveillance camera platform repository
-```sh
-git clone https://github.com/aws-samples/amazon-kinesis-video-streams-serverless-surveillance-platform.git
-```
-8. Copy the Cloud9 ID from the address bar in your browser, i.e. `<REGION>.console.aws.amazon.com/cloud9/ide/124vfgvd18d1bvx120841n23asek`. 
-
-- *(!) Remove `124vfgvd18d1bvx120841n23asek` with your identifier.*
-
-9. Install the infrastructure from root directory with the Cloud9 ID as follows:
-```sh
-cd infrastructure
-sh install-infrastructure.sh 124vfgvd18d1bvx120841n23asek
-```
-10. Deploy the camera mock from root directory as follows:
-```sh
-cd camera
-sh install-mock.sh
-```
-11. The deployment of the camera takes up to 10 Minutes. You will see `provision = true` in the web-client, when the mock is ready. ([see Step 4](#web-client-walkthrough))
-12. Deploy the web client from root directory as follows:
-```sh
-cd web-client
-sudo yum install xdg-utils -y
-npm install --global yarn
-yarn install --silent
-yarn start
-```
-13. Open `https://124vfgvd18d1bvx120841n23asek.vfs.cloud9.<REGION>.amazonaws.com`
-- *(!) Remove `124vfgvd18d1bvx120841n23asek` with your identifier of Step 8*
-14. (Alternatively)
-    1. Click on Preview in the top bar in Cloud9
-
-    2. Select Preview Running Application
-    ![Preview Running Application](./img/deploy-steps-1.png)
-
-    3. Select `Pop Out Into New Window` in the preview window
-
-    ![Pop Out Into New Window](./img/deploy-steps-2.png)
 
 ## How to clean up
 
