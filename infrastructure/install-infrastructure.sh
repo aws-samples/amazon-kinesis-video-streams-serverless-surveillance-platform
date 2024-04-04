@@ -150,3 +150,7 @@ IOT_ENDPOINT = ${IOT_ENDPOINT}
 # Include the name for the provisioning template that was created in IoT Core
 PRODUCTION_TEMPLATE = CameraProvisioningTemplate
 EOF
+
+# Install dependencies for Web-Application
+sudo yum install xdg-utils -y
+sudo npm install yarn -g

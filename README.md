@@ -159,7 +159,6 @@ The `Login.tsx` component handles the redirecting to the Amazon Cognito hosted U
 Please follow the instructions in the walktrough section of the corresponding blogpost on how to get started:
 [Design considerations for cost-effective video surveillance platforms with AWS IoT for Smart Homes](https://aws.amazon.com/blogs/iot/design-considerations-for-cost-effective-video-surveillance-platforms-with-aws-iot-for-smart-homes/)
 
-
 ## How to clean up
 
 Run the following script to remove the deployed infrastructure, permissions and roles.

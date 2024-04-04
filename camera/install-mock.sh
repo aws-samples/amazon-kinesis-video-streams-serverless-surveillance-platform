@@ -38,6 +38,7 @@ export AWS_IOT_CORE_CERT=/iot/certificates/certificate.cert.pem
 export AWS_IOT_CORE_PRIVATE_KEY=/iot/certificates/private.pem.key
 export AWS_IOT_CORE_ROLE_ALIAS=KvsCameraIoTRoleAlias
 export AWS_DEFAULT_REGION=${AWS_REGION}
+export AWS_IOT_CORE_THING_NAME=BCM2835-00000000b211cf11
 
 ./amazon-kinesis-video-streams-webrtc-sdk-c/build/samples/kvsWebrtcClientMasterGstSample BCM2835-00000000b211cf11
 EOF
